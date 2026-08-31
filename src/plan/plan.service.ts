@@ -7,6 +7,7 @@ export class PlanService {
 
   private reqDigest(request: any): string {
     return JSON.stringify({
+      出发地: request.origin,
       目的地: request.destinations,
       日期: request.travel_dates,
       人员: request.travelers,

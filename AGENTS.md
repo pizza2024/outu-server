@@ -126,6 +126,7 @@ Dockerfile 使用多阶段构建：
 {
   "request": {
     "request_id": "uuid",
+    "origin": "出发地城市（可选）",
     "destinations": ["目标城市/景点"],
     "travel_dates": {
       "departure_date": "2026-08-20",
