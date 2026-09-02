@@ -1,9 +1,53 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { TravelPlanAgent } from './travel-plan.agent'
+
+interface PlanJob {
+  status: 'pending' | 'done' | 'error'
+  plan?: any
+  error?: string
+  created_at: number
+}
 
 @Injectable()
 export class PlanService {
+  private readonly logger = new Logger(PlanService.name)
+  /** 生成任务表（内存版，MVP 够用；容器重启任务丢失，前端会超时提示重试） */
+  private jobs = new Map<string, PlanJob>()
+
   constructor(private readonly travelPlanAgent: TravelPlanAgent) {}
+
+  /** 创建异步生成任务：立即返回 job_id，后台执行 */
+  createJob(request: any): string {
+    const jobId = request.request_id || `job_${Date.now()}`
+    this.jobs.set(jobId, { status: 'pending', created_at: Date.now() })
+    this.pruneJobs()
+    this.generatePlan(request)
+      .then((r) => {
+        if (r.plan) {
+          this.jobs.set(jobId, { status: 'done', plan: r.plan, created_at: Date.now() })
+        } else {
+          this.jobs.set(jobId, { status: 'error', error: r.error || '生成失败', created_at: Date.now() })
+        }
+      })
+      .catch((e) => {
+        this.logger.error(`任务 ${jobId} 异常: ${e?.message}`)
+        this.jobs.set(jobId, { status: 'error', error: String(e?.message || e), created_at: Date.now() })
+      })
+    return jobId
+  }
+
+  /** 查询任务结果 */
+  getJob(jobId: string): PlanJob | null {
+    return this.jobs.get(jobId) || null
+  }
+
+  /** 清理 2 小时前的任务 */
+  private pruneJobs() {
+    const cutoff = Date.now() - 2 * 3600 * 1000
+    for (const [id, job] of this.jobs) {
+      if (job.created_at < cutoff) this.jobs.delete(id)
+    }
+  }
 
   private reqDigest(request: any): string {
     return JSON.stringify({
