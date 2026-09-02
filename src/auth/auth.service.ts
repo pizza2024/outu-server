@@ -70,9 +70,30 @@ export class AuthService {
       const u = users[data.openid]
       return { openid: data.openid, nickname: u.nickname, avatar: u.avatar }
     } catch (e: any) {
-      this.logger.error(`jscode2session 请求异常: ${e?.message}`)
-      return { openid: null, error: '网络异常，请稍后重试' }
+      const msg = e?.cause?.code || e?.message || String(e)
+      this.logger.error(`jscode2session 请求异常: ${msg}`)
+      return { openid: null, error: `网络异常：${msg}` }
     }
+  }
+
+  /** 部署自检：报告 Node 版本、环境变量配置、外网连通性（仅用于排查部署问题） */
+  async selfCheck() {
+    const result: Record<string, any> = {
+      node: process.version,
+      has_fetch: typeof fetch === 'function',
+      wx_appid_set: !!process.env.WX_APPID,
+      wx_secret_set: !!process.env.WX_SECRET,
+      wechat_api: '未测试'
+    }
+    try {
+      const res = await fetch('https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=invalid&secret=invalid', { signal: AbortSignal.timeout(8000) })
+      const data = await res.json()
+      result.wechat_api = `可达（HTTP ${res.status}，微信应答正常）`
+      void data
+    } catch (e: any) {
+      result.wechat_api = `不可达：${e?.cause?.code || e?.message || String(e)}`
+    }
+    return result
   }
 
   /** 保存头像昵称 */

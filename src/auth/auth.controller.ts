@@ -16,6 +16,13 @@ export class AuthController {
     return this.authService.loginByCode(body.code)
   }
 
+  /** 部署自检（排查线上环境用） */
+  @Post('check')
+  async check(@Headers('x-outu-token') token: string) {
+    this.checkToken(token)
+    return this.authService.selfCheck()
+  }
+
   /** 保存用户资料（头像/昵称，由前端 chooseAvatar + nickname 输入框采集） */
   @Post('profile')
   async saveProfile(
