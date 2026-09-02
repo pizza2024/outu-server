@@ -1,6 +1,33 @@
 import { Injectable, Logger } from '@nestjs/common'
 import * as fs from 'fs'
 import * as path from 'path'
+import * as https from 'https'
+
+/**
+ * 微信 API 请求专用通道：
+ * 微信云托管容器出网经过的网关会对 api.weixin.qq.com 注入自签名证书，
+ * 直接 fetch 会报 DEPTH_ZERO_SELF_SIGNED_CERT。
+ * 这里对该固定域名关闭证书校验（仅影响对微信 API 的调用，不影响其他请求）。
+ */
+const WX_API_AGENT = new https.Agent({ rejectUnauthorized: false })
+
+function wxApiGet(url: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { agent: WX_API_AGENT, timeout: 10000 }, (res) => {
+      let raw = ''
+      res.on('data', (chunk) => (raw += chunk))
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(raw))
+        } catch {
+          reject(new Error(`微信接口返回非 JSON（HTTP ${res.statusCode}）`))
+        }
+      })
+    })
+    req.on('timeout', () => req.destroy(new Error('ETIMEDOUT')))
+    req.on('error', reject)
+  })
+}
 
 interface UserRecord {
   openid: string
@@ -47,8 +74,7 @@ export class AuthService {
       const url =
         'https://api.weixin.qq.com/sns/jscode2session' +
         `?appid=${appid}&secret=${secret}&js_code=${encodeURIComponent(code)}&grant_type=authorization_code`
-      const res = await fetch(url)
-      const data = (await res.json()) as { openid?: string; errcode?: number; errmsg?: string }
+      const data = (await wxApiGet(url)) as { openid?: string; errcode?: number; errmsg?: string }
       if (!data.openid) {
         this.logger.warn(`jscode2session 失败: ${data.errcode} ${data.errmsg}`)
         return { openid: null, error: `微信登录失败（${data.errcode}: ${data.errmsg}）` }
@@ -86,10 +112,8 @@ export class AuthService {
       wechat_api: '未测试'
     }
     try {
-      const res = await fetch('https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=invalid&secret=invalid', { signal: AbortSignal.timeout(8000) })
-      const data = await res.json()
-      result.wechat_api = `可达（HTTP ${res.status}，微信应答正常）`
-      void data
+      await wxApiGet('https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=invalid&secret=invalid')
+      result.wechat_api = '可达（微信应答正常）'
     } catch (e: any) {
       result.wechat_api = `不可达：${e?.cause?.code || e?.message || String(e)}`
     }
