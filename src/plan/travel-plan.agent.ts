@@ -30,6 +30,7 @@ const SCHEDULE_SCHEMA = `{
 
 const GLOBAL_SCHEMA = `{
   "summary": { "title": "方案标题", "destination_label": "", "duration_label": "X天X晚", "theme_tags": [], "cover_image_url": "" },
+  "preparation": [{ "title": "预订往返机票", "detail": "一句话说明", "due_date": "YYYY-MM-DD（建议完成日期）", "category": "booking|document|packing|other" }],
   "transportation": { "intercity": [{ "leg": "出发地→目的地", "mode": "flight|train|bus|self_drive",
       "recommendations": [{ "option": "航班号/车次", "departure_time": "HH:MM", "arrival_time": "HH:MM", "duration": "", "price_range": "", "booking_link": "" }] }],
     "local": { "recommendation": "市内交通建议", "tips": "" } },
@@ -72,14 +73,32 @@ export class TravelPlanAgent {
 
   /** 全局信息提示词（不含每日行程） */
   buildGlobalPrompt(digest: string): string {
-    return `用户需求：${digest}\n\n请只生成旅行方案的"全局信息"部分（不含每日行程），JSON 结构：\n${GLOBAL_SCHEMA}`
+    return `用户需求：${digest}
+
+请只生成旅行方案的"全局信息"部分（不含每日行程）。
+其中 preparation 是"出发前待办清单"，要求：
+- 把所有需要用户提前办理的事项都列出来，4-8 项，按紧迫程度排序
+- 必须包含：往返大交通订票、住宿预订；如行程涉及热门景点/场馆/演出，列出对应预约或购票
+- 每项给出建议完成日期 due_date（必须在出发日期之前，订票类建议提前 7-15 天）
+- category 取值：booking=订票订房预约，document=证件签证，packing=行李装备，other=其他
+JSON 结构：
+${GLOBAL_SCHEMA}`
   }
 
   /** 单日行程提示词 */
   buildDayPrompt(digest: string, dayIndex: number, totalDays: number, date: string): string {
-    const first = dayIndex === 0 ? '当天为抵达日，行程从午后开始；' : ''
-    const last = dayIndex === totalDays - 1 ? '当天为返程日，下午不排重活动；' : ''
-    return `用户需求：${digest}\n\n请只生成第 ${dayIndex + 1} 天（${date}）的行程安排，4-6 个活动节点，餐饮覆盖三餐，${first}${last}JSON 结构：\n${SCHEDULE_SCHEMA}`
+    const first =
+      dayIndex === 0
+        ? '当天为抵达日，必须包含带精确时间的关键交通节点：从家出发前往机场/车站、值机/检票（预留充足提前量）、航班/车次起降时间、抵达目的地、前往酒店办理入住；'
+        : ''
+    const last =
+      dayIndex === totalDays - 1
+        ? '当天为返程日，必须包含带精确时间的关键交通节点：酒店退房、前往机场/车站、值机/检票、返程起降/发车与抵达时间；下午不排重活动；'
+        : ''
+    return `用户需求：${digest}
+
+请只生成第 ${dayIndex + 1} 天（${date}）的行程安排，4-6 个活动节点，餐饮覆盖三餐。每个节点必须有具体的 start_time 和 end_time（24小时制），相邻节点之间预留合理的交通与缓冲时间。${first}${last}JSON 结构：
+${SCHEDULE_SCHEMA}`
   }
 
   /** 调一次 Agent，返回解析后的 JSON */

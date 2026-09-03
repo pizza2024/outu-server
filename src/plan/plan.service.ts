@@ -104,6 +104,7 @@ export class PlanService {
         request_id: request.request_id,
         generated_at: new Date().toISOString(),
         summary: global.summary,
+        preparation: Array.isArray(global.preparation) ? global.preparation : [],
         daily_plans,
         transportation: global.transportation || { intercity: [], local: { recommendation: '', tips: '' } },
         accommodation: global.accommodation || [],
